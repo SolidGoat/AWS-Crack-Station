@@ -117,7 +117,7 @@ function SetupWordlists
 # Shell usage
 function Usage
 {
-    echo -e ${txtylw}"Usage: $0 [-h <string>]"${txtrst}
+    echo -e ${txtylw}"Usage: $0 [-h <hostname>]"${txtrst}
     exit 1
 }
 
