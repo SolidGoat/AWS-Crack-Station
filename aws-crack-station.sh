@@ -47,7 +47,15 @@ bakwht='\e[47m'   # White
 txtrst='\e[0m'    # Text Reset - Useful for avoiding color bleed
 
 # Array of base packages to install
-declare -a basePackages=("tmux" "unzip" "p7zip-full" "python3-pip" "build-essential" "linux-headers-$(uname -r)" "git")
+declare -a basePackages=("tmux" "unzip" "p7zip-full" "python3-pip" "build-essential" "linux-headers-$(uname -r)" "git"
+                        "ocl-icd-libopencl1" "opencl-headers" "clinfo")
+
+# Hashcat URL and file version
+hashcat_version="6.1.1"
+hashcat_url="https://hashcat.net/files/hashcat-$hashcat_version.7z"
+
+# Get distribution name
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
 
 # Check if running as root; exit if not
 function CheckRoot
@@ -62,9 +70,9 @@ function CheckRoot
 # Change hostname of server
 function ChangeHostname
 {
-    echo -e ${bldgrn}"Changing Hostname..."${txtrst}
+    echo -e ${bldgrn}"\n[+]Changing Hostname..."${txtrst}
 
-    hostnamectl set-hostname linuxize
+    hostnamectl set-hostname $hostname
 
     echo -e ${txtblu}"Hostname set to: "${txtrst}${bldblu}"$(hostname)"${txtrst}
 }
@@ -72,7 +80,8 @@ function ChangeHostname
 # Perform full OS upgrade
 function UpgradeOS
 {
-    echo -e ${bldgrn}"Running Updates..."${txtrst}
+    echo -e ${bldgrn}"\n[+]Running OS Updates..."${txtrst}
+    sleep 3
 
     apt -y update
     apt -y upgrade
@@ -80,27 +89,74 @@ function UpgradeOS
 }
 
 # Install base packages from $basePackages
-function SetupBasePackages
+function InstallBasePackages
 {
-    echo -e ${bldgrn}"Install Base Packages..."${txtrst}
+    echo -e ${bldgrn}"\n[+]Install Base Packages..."${txtrst}
+    sleep 3
 
     apt -y install "${basePackages[@]}"
+}
+
+# Install base packages from $basePackages
+function InstallNVIDIA
+{
+    echo -e ${bldgrn}"\n[+]Installing NVIDIA Drivers..."${txtrst}
+    sleep 3
+
+    # Creating modprobe blacklist file and populate
+    echo -e ${txtylw}"\n[-]Writing to modprobe blacklist file..."${txtrst}
+    sleep 3
+
+    touch /etc/modprobe.d/blacklist-nouveau.conf
+    echo "blacklist nouveau" | tee -a /etc/modprobe.d/blacklist-nouveau.conf
+    echo "blacklist lbm-nouveau" | tee -a /etc/modprobe.d/blacklist-nouveau.conf
+    echo "options nouveau modeset=0" | tee -a /etc/modprobe.d/blacklist-nouveau.conf
+    echo "alias nouveau off" | tee -a /etc/modprobe.d/blacklist-nouveau.conf
+    echo "alias lbm-nouveau off" | tee -a /etc/modprobe.d/blacklist-nouveau.conf
+
+    # Creating Nouveau config file
+    echo -e ${txtylw}"\n[-]Writing to Nouveau config file..."${txtrst}
+    sleep 3
+
+    touch /etc/modprobe.d/nouveau-kms.conf
+    echo "options nouveau modeset=0" | tee -a /etc/modprobe.d/nouveau-kms.conf
+
+    # Install NVIDIA CUDA drivers through package manager
+    echo -e ${txtylw}"\n[-]Installing NVIDIA CUDA drivers..."${txtrst}
+    sleep 3
+
+    # Dowonload CUDA pin for specified distribution
+    cd $HOME
+    wget https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/cuda-$distribution.pin
+    mv cuda-$distribution.pin /etc/apt/preferences.d/cuda-repository-pin-600
+
+    # Install public key
+    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64/7fa2af80.pub
+
+    # Add NVIDIA repo to cuda.list
+    echo "deb http://developer.download.nvidia.com/compute/cuda/repos/$distribution/x86_64 /" | tee /etc/apt/sources.list.d/cuda.list
+
+    apt -y update
+    apt -y install cuda-drivers
 }
 
 # Download and extract hashcat
 function SetupHashcat
 {
-    echo -e ${bldgrn}"Downloading and Extracting Hashcat..."${txtrst}
+    echo -e ${bldgrn}"\n[+]Downloading and Extracting Hashcat..."${txtrst}
+    sleep 3
 
     # Download and extract hashcat
-    wget https://hashcat.net/files/hashcat-6.0.0.7z -O /opt
-    7z x /opt/hashcat-6.0.0.7z
+    wget $hashcat_url -O /opt/hashcat-$hashcat_version.7z
+    7z x /opt/hashcat-$hashcat_version.7z -o/opt/
+    rm hashcat-$hashcat_version.7z
 }
 
 # Download wordlists
 function SetupWordlists
 {
-    echo -e ${bldgrn}"Downloading Wordlists..."${txtrst}
+    echo -e ${bldgrn}"\n[+]Downloading Wordlists..."${txtrst}
+    sleep 3
 
     # Create wordlists directory in /opt
     mkdir /opt/wordlists
@@ -127,9 +183,12 @@ function Main
     CheckRoot
     ChangeHostname
     UpgradeOS
-    SetupBasePackages
+    InstallBasePackages
     SetupHashcat
     SetupWordlists
+    InstallNVIDIA
+
+    echo -e ${bldgrn}"\nSetup of $hostname is complete!\n"${txtrst}
 }
 
 # Parse arguments
